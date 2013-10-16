@@ -5,35 +5,45 @@ const Lang = imports.lang;
 const Mainloop = imports.mainloop;
 const WallClock = imports.gi.GnomeDesktop.WallClock;
 
+const DEBUG = true;
+const LABEL_CLASS = 'clockes_label';
+const TIME_BLOCK_CLASS = 'clockes_time';
+const TIME_BIT_CLASS = 'clockes_bit_of_time';
+const TIME_BIT_ACTIVE_CLASS = 'active';
+const HIDING_TWEENER_TRANSACTION_ANIMATION = 'easeOutQuad';
+const TIME_BLOCK_ROWS_COUNT = 3; // Kind of only 2 or 3, for normal people
+const TIME_BLOCK_COLUMNS_COUNT = 6; // There too, but there only 6 it is.
+
 function init() {
     return new SquaresClockes();
 }
 
-// Just simple logger with init jammer if debug does not need
-function Logger(debug) {
-    this._init(debug);
+// Just simple logger with jammer if debug does not need
+// Need to be exist variable DEBUG in global scope
+// for actualy broadcast something, no need do it right away
+// it can be switched during the script
+function Logger() {
+    this._init();
 }
 
 Logger.prototype = {
-    _init: function(debug) {
-        this._debug = debug;
+    _init: function() {
+        // nothing at all
     },
 
     log: function(message) {
-        if(this._debug)
+        if(DEBUG)
             global.log("'SquareClockes@signal2564': " + message);
     }
 }
 
 function SquaresClockes() {
-    this._init(true);
+    this._init();
 }
 
 SquaresClockes.prototype = {
-    __proto__: WallClock.prototype,
-
-    _init: function(debug) {
-        this._logger = new Logger(debug);
+    _init: function() {
+        this._logger = new Logger();
 
         this._logger.log("Start SquaresClockes in yor gnome-shell!")
 
@@ -45,51 +55,33 @@ SquaresClockes.prototype = {
             y_fill: false,
             track_hover: true
         });
-        let label = new St.Label({ style_class: 'clockes_time', text: "What time is it?" });
+        let label = new St.Label({ style_class: LABEL_CLASS, text: "What time is it?" });
 
         this._button.set_child(label);
         this._button.connect('button-press-event', Lang.bind(this, this._pressInspect));
 
         this._showed = false;
-        this._timeTable = new St.Label({ style_class: 'clockes_actual_time' });
-        let table = [
-            [
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'})
-            ], [
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'})
-            ], [
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'}),
-                new St.Button({style_class: 'clockes_bit_of_time'})
-            ]
-        ];
+        this._timeTable = new St.DrawingArea({ style_class: TIME_BLOCK_CLASS });
+        let table = [[], [], []];
 
         this._logger.log("Filling clock table.");
-        for(let i = 0, l0 = table.length; i < l0; i++) {
-            let row = new St.Label();
+        for(let i = 0, l0 = TIME_BLOCK_ROWS_COUNT; i < l0; i++) {
+            let row = new St.BoxLayout();
+            row.set_position(10, 10 + 22 * i);
             this._timeTable.add_child(row);
-            for(let j = 0, l1 = table[i].length; j < l1; j++) {
-                row.add_child(table[i][j]);
+            for(let j = 0, l1 = TIME_BLOCK_COLUMNS_COUNT; j < l1; j++) {
+                let bit = new St.Button({ style_class: TIME_BIT_CLASS, x: 22 * j });
+                table[i][j] = bit;
+                row.add_child(bit);
             }
         }
 
-        this._logger.log("Adding little magic.")
+        this._logger.log("Adding little magic...")
         // Ha-ha, lets just assume that its normal
         // because of dynamic nature of javascript
-        this._timeTable._sortedChildrens = table;
+        this._timeTable._childrenInBuskets = table;
+
+
     },
 
     _pressInspect: function() {
@@ -97,12 +89,13 @@ SquaresClockes.prototype = {
         if(this._showed) {
             this._logger.log("Hiding binary clock.");
             this._showed = false;
+            this._button.set_reactive(false);
             Tweener.addTween(
                 this._timeTable,
                 {
                     opacity: 0,
                     time: 1,
-                    transition: 'easeOutQuad',
+                    transition: HIDING_TWEENER_TRANSACTION_ANIMATION,
                     onComplete: Lang.bind(
                         this,
                         this._hideTime
@@ -110,49 +103,44 @@ SquaresClockes.prototype = {
                 }
             );
         } else {
-            this._logger.log("Showing binary clock.");
+            this._logger.log("Show time!");
             this._showed = true;
             this._showTime()
         }
     },
 
     _updateTime: function() {
-        let time = new Date,
-            aTime = [time.getHours(), time.getMinutes(), time.getSeconds()],
-            table = [[],[],[]],
-            timeTable = this._timeTable._sortedChildrens;
+        let time = new Date(),
+            aTime = [time.getHours(), time.getMinutes()],
+            timeTable = this._timeTable._childrenInBuskets;
+
+        // If seconds allowed
+        if(aTime.length != TIME_BLOCK_ROWS_COUNT)
+            aTime.push(time.getSeconds());
 
         // Try to create binmap
-        for(let i = 0, l = aTime.length; i < l; i++) {
-            let pow = Math.floor(Math.sqrt(aTime[i]));
-            for(let j = 0; j < timeTable[i].length - pow; j++) {
-                table[i].push(0);
+        for(let i = 0, l = TIME_BLOCK_ROWS_COUNT; i < l; i++) {
+            let pow = Math.floor(Math.log(aTime[i])/Math.log(2)),
+                j = 0; // It will be in this scope
+
+            // Suddenly, there magic 1. Very sad. :[
+            // Well, definitly looking not good.
+            while(j < TIME_BLOCK_COLUMNS_COUNT - pow - 1) {
+                timeTable[i][j].remove_style_class_name(TIME_BIT_ACTIVE_CLASS);
+                j++;
             }
-            while(pow > 0) {
-                let temp = aTime[i] - Math.pow(2, pow);
-                if(temp < 0) {
-                    table[i].push(0);
+            while(pow >= 0) {
+                let remaining = aTime[i] - Math.pow(2, pow);
+                if(remaining < 0) {
+                    timeTable[i][j].remove_style_class_name(TIME_BIT_ACTIVE_CLASS);
                 } else {
-                    aTime[i] -= Math.pow(2, pow);
-                    table[i].push(1);
+                    aTime[i] = remaining;
+                    timeTable[i][j].add_style_class_name(TIME_BIT_ACTIVE_CLASS);
                 }
                 pow--;
+                j++;
             }
         }
-
-        // Start drawing! Hyrai!
-        for(let i = 0, l0 = timeTable.length; i < l0; i++) {
-            for(let j = 0, l1 = timeTable[i].length; j < l1; j++) {
-                if(table[i][j]) {
-                    timeTable[i][j].add_style_class_name('active');
-                } else {
-                    timeTable[i][j].remove_style_class_name('active');
-                }
-            }
-        }
-
-        // Wonder what it is
-        this._timeTable.queue_redraw();
     },
 
     _hideTime: function() {
@@ -160,6 +148,8 @@ SquaresClockes.prototype = {
 
         this._logger.log("Pull out from pool. Rest now clockes.");
         Main.panel.statusArea.dateMenu._clock.disconnect(this._tikTak);
+
+        this._button.set_reactive(true);
     },
 
     _showTime: function() {
