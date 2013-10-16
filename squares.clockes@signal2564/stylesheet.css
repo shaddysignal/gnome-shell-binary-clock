@@ -5,11 +5,11 @@
 
 .clockes_bit_of_time {
     background-color: lightgrey;
-    border-radius: 4px;
+    border-radius: 1px;
     border: 0;
 }
 
 .clockes_bit_of_time.active {
     background-color: black;
-    border: 2px solid lightgrey;
+    border: 0.5px solid lightgrey;
 }

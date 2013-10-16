@@ -45,74 +45,44 @@ SquaresClockes.prototype = {
     _init: function() {
         this._logger = new Logger();
 
-        this._logger.log("Start SquaresClockes in yor gnome-shell!")
+        this._logger.log("Start SquaresClockes in yor gnome-shell!");
 
-        this._button = new St.Bin({
-            style_class: 'panel-button',
-            reactive: true,
-            can_focus: true,
-            x_fill: true,
-            y_fill: false,
-            track_hover: true
-        });
-        let label = new St.Label({ style_class: LABEL_CLASS, text: "What time is it?" });
-
-        this._button.set_child(label);
-        this._button.connect('button-press-event', Lang.bind(this, this._pressInspect));
-
-        this._showed = false;
+        this._originalClock = Main.panel.statusArea.dateMenu._clockDisplay;
+        this._dateLabel = new St.Label({ style_class: LABEL_CLASS, text: "What day is it?" });
         this._timeTable = new St.DrawingArea({ style_class: TIME_BLOCK_CLASS });
-        let table = [[], [], []];
+        this._binaryClock = new St.BoxLayout();
 
-        this._logger.log("Filling clock table.");
+        this._binaryClock.add_actor(this._dateLabel);
+        this._binaryClock.add_actor(this._timeTable);
+
+        let table = [[], [], []],
+            row_size = Math.ceil((this._originalClock.height) / 3);
+
+        this._logger.log("Filling clock table...");
         for(let i = 0, l0 = TIME_BLOCK_ROWS_COUNT; i < l0; i++) {
-            let row = new St.BoxLayout();
-            row.set_position(10, 10 + 22 * i);
+            let row = new St.BoxLayout({ x: 5, y: row_size * i });
             this._timeTable.add_child(row);
             for(let j = 0, l1 = TIME_BLOCK_COLUMNS_COUNT; j < l1; j++) {
-                let bit = new St.Button({ style_class: TIME_BIT_CLASS, x: 22 * j });
+                let bit = new St.Button({ style_class: TIME_BIT_CLASS, x: row_size * j, width: row_size - 1, height: row_size - 1 });
                 table[i][j] = bit;
                 row.add_child(bit);
             }
         }
 
-        this._logger.log("Adding little magic...")
+        this._logger.log("Adding little magic...");
         // Ha-ha, lets just assume that its normal
         // because of dynamic nature of javascript
         this._timeTable._childrenInBuskets = table;
-
-
-    },
-
-    _pressInspect: function() {
-        this._logger.log("Button press, let see what will be decided...");
-        if(this._showed) {
-            this._logger.log("Hiding binary clock.");
-            this._showed = false;
-            this._button.set_reactive(false);
-            Tweener.addTween(
-                this._timeTable,
-                {
-                    opacity: 0,
-                    time: 1,
-                    transition: HIDING_TWEENER_TRANSACTION_ANIMATION,
-                    onComplete: Lang.bind(
-                        this,
-                        this._hideTime
-                    )
-                }
-            );
-        } else {
-            this._logger.log("Show time!");
-            this._showed = true;
-            this._showTime()
-        }
     },
 
     _updateTime: function() {
         let time = new Date(),
             aTime = [time.getHours(), time.getMinutes()],
             timeTable = this._timeTable._childrenInBuskets;
+
+        // Year, every second setting text for label
+        // that changes kind of 1 time in 24 hours
+        this._dateLabel.set_text(time.toDateString());
 
         // If seconds allowed
         if(aTime.length != TIME_BLOCK_ROWS_COUNT)
@@ -143,41 +113,26 @@ SquaresClockes.prototype = {
         }
     },
 
-    _hideTime: function() {
-        Main.uiGroup.remove_actor(this._timeTable);
+    enable: function() {
+        this._logger.log("Enabling...");
 
-        this._logger.log("Pull out from pool. Rest now clockes.");
-        Main.panel.statusArea.dateMenu._clock.disconnect(this._tikTak);
-
-        this._button.set_reactive(true);
-    },
-
-    _showTime: function() {
         this._updateTime();
-        this._timeTable.opacity = 255;
-
-        Main.uiGroup.add_actor(this._timeTable);
-
-        let monitor = Main.layoutManager.primaryMonitor;
-
-        this._timeTable.set_position(
-            Math.floor(monitor.width / 2 - this._timeTable.width / 2),
-            Math.floor(monitor.height / 2 - this._timeTable.height / 2)
-        )
 
         this._logger.log("Inject clock in loop for countless updates.");
         this._tikTak = Main.panel.statusArea.dateMenu._clock.connect('notify::clock', Lang.bind(this, this._updateTime));
-    },
 
-    enable: function() {
-        this._logger.log("Enabling...")
-        Main.panel._rightBox.insert_child_at_index(this._button, 0);
-        this._logger.log("Enjoy.")
+        Main.panel.statusArea.dateMenu.actor.remove_actor(this._originalClock);
+        Main.panel.statusArea.dateMenu.actor.add_actor(this._binaryClock);
+        this._logger.log("Enjoy.");
     },
 
     disable: function() {
-        this._logger.log("Disabling...")
-        Main.panel._rightBox.remove_child(this._button);
-        this._logger.log("See you soon.")
+        this._logger.log("Disabling...");
+
+        this._logger.log("Pull out from pool. Rest now clockes.");
+        Main.panel.statusArea.dateMenu._clock.disconnect(this._tikTak);
+        Main.panel.statusArea.dateMenu.actor.add_actor(this._originalClock);
+        Main.panel.statusArea.dateMenu.actor.remove_actor(this._binaryClock);
+        this._logger.log("See you soon.");
     }
 }
