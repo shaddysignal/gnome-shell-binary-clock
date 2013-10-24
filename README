@@ -1,14 +1,9 @@
- Gnome Shell Extension - Binary Clock(only for 3.8.4)
+ Gnome Shell Extension - Binary Clock(tested only for 3.8.4)
 
  Nothing fancy, just change for standard clock.
- 
- 
- Unfortunatly today extension tough enough to say it made of wood.
- You need get knife in your hands, and carve.
 
  TODO:
-   I18n?
-   Settings.
+   Click on clock should emit popup menu.
 
 -------------------------------------------------------------
  Inspired by:
