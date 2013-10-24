@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gnome-shell-extensions">
+  <schema path="/org/gnome/shell/extensions/squares-clockes/" id="org.gnome.shell.extensions.squares-clockes">
+    <key type="s" name="color-schema">
+      <default>'lightgrey-black'</default>
+      <summary>Schema for color</summary>
+      <description>light false bits, black true bits(with light border)</description>
+    </key>
+  </schema>
+</schemalist>

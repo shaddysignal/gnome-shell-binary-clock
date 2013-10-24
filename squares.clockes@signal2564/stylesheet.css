@@ -1,15 +1,19 @@
 
-.clockes_time {
-
+.dark_clockes_time .clockes_bit_of_time {
+    background-color: black;
 }
 
-.clockes_bit_of_time {
+.dark_clockes_time .clockes_bit_of_time.active {
     background-color: lightgrey;
     border-radius: 1px;
-    border: 0;
 }
 
-.clockes_bit_of_time.active {
+.light_clockes_time .clockes_bit_of_time {
+    background-color: lightgrey;
+    border-radius: 1px;
+}
+
+.light_clockes_time .clockes_bit_of_time.active {
     background-color: black;
-    border: 0.5px solid lightgrey;
+    border: 1px solid lightgrey;
 }
