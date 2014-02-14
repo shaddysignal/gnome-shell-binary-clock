@@ -12,17 +12,10 @@ const CLOCK_SHOW_SECONDS_ALIAS = 'clock-show-seconds';
 const CLOCK_SHOW_DATE_ALIAS = 'clock-show-date';
 const COLOR_SCHEMA_ALIAS = 'color-schema';
 
-const DEBUG = false;
-const BLOCK_CLASS = 'invisible'
+const DEBUG = true;
+const BLOCK_CLASS = 'invisible';
 const LABEL_CLASS = 'clockes_label';
 var TIME_BLOCK_CLASS = 'light_clockes_time';
-const TIME_BIT_CLASS = 'clockes_bit_of_time';
-const TIME_BIT_ACTIVE_CLASS = 'active';
-const HIDING_TWEENER_TRANSACTION_ANIMATION = 'easeOutQuad';
-var SHOW_SECONDS = true; // true by default
-var SHOW_DATE = true; // true by default
-const TIME_BLOCK_COLUMNS_COUNT = 6; // There only 6 it is.
-var TIME_BLOCK_ROWS_COUNT = 3; // Can be 2 or 3, for most people
 
 function init() {
     return new SquaresClockes();
@@ -31,30 +24,57 @@ function init() {
 function SquaresClockes() {
     Convenience.initTranslations();
     this._gnomeSettings = Convenience.getSettings('org.gnome.desktop.interface');
-    SHOW_SECONDS = this._gnomeSettings.get_boolean(CLOCK_SHOW_SECONDS_ALIAS);
-    SHOW_DATE = this._gnomeSettings.get_boolean(CLOCK_SHOW_DATE_ALIAS);
+
+    this._showSeconds = this._gnomeSettings.get_boolean(CLOCK_SHOW_SECONDS_ALIAS);
+    this._timeTableRowCounts = this.showSeconds ? 3 : 2;
+
+    this._showDate = this._gnomeSettings.get_boolean(CLOCK_SHOW_DATE_ALIAS);
+
     this._settings = Convenience.getSettings();
     this._init();
 }
 
 SquaresClockes.prototype = {
+    _showSeconds: true,
+    _showDate: true,
+    _showGrid: false, // I don't like grid
+    _gridWidth: 1,
+    _inverseTheme: true, // If false - then bits are color of text, and background color of, well, background
+    _cornerRadius: 2, // for bit
+    _activeHasBorder: true, // border for active bit
+    _borderWidth: 2,
+    _spacing: 1, // between bits. If grid shows, the spacing show how many px between grid and bit
+    _hasOuterBorder: false, // Show border around clock area(without date)
+    _outerBorderWidth: 1,
+    _outerCornerRadius: 0,
+    _timeBlockColumnsCount: 6, // There only 6, I guess
+    _timeBlockRowsCount: 3, // Can be 2 or 3, for most people
+
     _init: function() {
         this._logger = new Misc.Logger(DEBUG);
 
         this._logger.log("Start SquaresClockes in your gnome-shell!");
 
         this._originalClock = DateMenu._clockDisplay;
-        this._dateLabel = new St.Label({ style_class: LABEL_CLASS, text: "What day is it?" });
-        this._timeTable = new St.BoxLayout({ style_class: TIME_BLOCK_CLASS, vertical: true, reactive: true });
+        this._dateLabel = new St.Label({ style_class: LABEL_CLASS, text: "What day is it?", visible: false });
+        this._timeTable = new St.DrawingArea({ style_class: TIME_BLOCK_CLASS, reactive: true });
         this._binaryClock = new St.BoxLayout({ height: this._originalClock.height });
 
-        this._dateLabel.hide();
-        if(SHOW_DATE)
+        if(this._showDate)
             this._dateLabel.show();
         this._binaryClock.add_actor(this._dateLabel);
         this._binaryClock.add_actor(this._timeTable);
 
-        this._buildClockesTable();
+        this._repaintTimeTableConnection = this._timeTable.connect('repaint', Lang.bind(this, this._paintClockesTable));
+
+        let rawTimeTable = [];
+        for(let i = 0; i < this._timeBlockRowsCount; i++) {
+            rawTimeTable[i] = [];
+            for(let j = 0; j < this._timeBlockColumnsCount; j++) {
+                rawTimeTable[i][j] = 0;
+            }
+        }
+        this._timeTable._childrenInBuskets = rawTimeTable;
     },
 
     enable: function() {
@@ -82,47 +102,93 @@ SquaresClockes.prototype = {
         this._gnomeSettings.disconnect(this._changeSeconds);
         this._gnomeSettings.disconnect(this._changeDate);
 
-        this._clearClockesTable();
-
         this._logger.log("Pull out from pool. Rest now, clockes.");
         DateMenu._clock.disconnect(this._tikTak);
+
         DateMenu.actor.add_actor(this._originalClock);
         DateMenu.actor.remove_actor(this._binaryClock);
         this._logger.log("See you soon.");
     },
 
-    _buildClockesTable: function() {
-        let table = [[], [], []],
-            row_size = Math.ceil((this._originalClock.height) / TIME_BLOCK_ROWS_COUNT);
+    _paintClockesTable: function(area) {
+        let c = area.get_context(),
+            fgcolor = fgc = this._timeTable.get_theme_node().get_foreground_color(),
+            bgcolor = bgc = this._timeTable.get_theme_node().get_background_color(),
+            height = area.get_height(),
+            width = area.get_width(),
+            blockSideLength = Math.round(height / this._timeBlockRowsCount) - this._spacing * (this._timeBlockRowsCount - 1),
+            margin = 0,
+            gap = this._spacing;
 
-        this._logger.log("Filling clock table...");
-        for(let i = 0, l0 = TIME_BLOCK_ROWS_COUNT; i < l0; i++) {
-            let row = new St.BoxLayout({ x: 5, y: row_size * i});
-            this._timeTable.add_child(row);
-            for(let j = 0, l1 = TIME_BLOCK_COLUMNS_COUNT; j < l1; j++) {
-                let bit = new St.Button({
-                    style_class: TIME_BIT_CLASS,
-                    x: row_size * j,
-                    width: row_size - 1, // 1 for space between
-                    height: row_size - 1
-                });
-                table[i][j] = bit;
-                row.add_child(bit);
-            }
+        if(this._inverseTheme)
+            [ fgc, bgc ] = [ bgcolor, fgcolor ];
+
+        if(this._hasOuterBorder) {
+            Clutter.cairo_set_source_color(c, fgcolor);
+            c.setLineWidth(this._outerBorderWidth);
+
+            this._cairoDrawRoundedRectangle(0, 0, height, width, this._outerCornerRadius);
+            c.stroke();
+
+            margin = this._outerBorderWidth;
+            height -= margin * 2;
+            blockSideLength = Math.round(height / this._timeBlockRowsCount) - this._spacing * (this._timeBlockRowsCount - 1);
         }
 
-        this._logger.log("Adding little magic...");
-        // Hah, lets just assume that its normal
-        // because of dynamic nature of javascript
-        this._timeTable._childrenInBuskets = table;
+        if(this._showGrid) {
+            blockSideLength = Math.round(height / this._timeBlockRowsCount) - (2 * this._spacing + this._gridWidth) * (this._timeBlockRowsCount - 1);
 
-        // Set width, because it just did not set themselfs(or I not see where)
-        // + some margin
-        this._timeTable.width = row_size * TIME_BLOCK_COLUMNS_COUNT + 10;
-    },
+            Clutter.cairo_set_source_color(c, fgcolor);
+            c.setLineWidth(this._gridWidth);
 
-    _clearClockesTable: function() {
-        this._timeTable.destroy_all_children();
+            let step = 2 * this._spacing + blockSideLength,
+                positionX = margin + step,
+                positionY = margin;
+
+            for(let i = 0; i < this._timeBlockColumnsCount - 1; i++) {
+                this._cairoLineFromTo(positionX, positionY, positionX, positionY + height - 2 * margin);
+                positionX += step + this._gridWidth;
+            }
+            positionX = margin;
+            positionY = margin + step;
+
+            for(let j = 0; j < this._timeBlockRowsCount - 1; j++) {
+                this._cairoLineFromTo(positionX, positionY, positionX + width - 2 * margin, positionY)
+                positionY += step + this._gridWidth;
+            }
+
+            c.stroke();
+            gap = 2 * this._spacing + this._gridWidth;
+        }
+
+        // Draw bits
+
+        let positionX = margin + this._spacing,
+            positionY = positionX,
+            step = blockSideLength + gap,
+            timeTable = this._timeTable._childrenInBuskets;
+
+        this._logger.log(timeTable);
+
+        for(let i = 0; i < this._timeTableRowCount; i++) {
+            positionY += step;
+            for(let j = 0; j < this._timeBlockColumnsCount; j++) {
+                timeTable[i][j] ? Clutter.cairo_set_source_color(c, bgc) : Clutter.cairo_set_source_color(c, fgc);
+                this._cairoDrawRoundedRectangle(positionX, positionY, blockSideLength, blockSideLength, this._cornerRadius);
+                c.fill();
+
+                if(this._activeHasBorder && timeTable[i][j]) {
+                    Clutter.cairo_set_source_color(c, fgc);
+                    c.setLineWidth(this._borderWidth);
+
+                    this._cairoDrawRoundedRectangle(positionX, positionY, blockSideLength, blockSideLength, this._cornerRadius);
+                    c.stroke();
+                }
+
+                positionX += step;
+            }
+            positionX = margin + this._spacing;
+        }
     },
 
     _updateTime: function() {
@@ -132,28 +198,59 @@ SquaresClockes.prototype = {
 
         // Yeah, every second setting text for label
         // that changes 1 time in 24 hours
-        if(SHOW_DATE)
+        if(this._showDate)
             this._dateLabel.set_text(time.toDateString());
 
-        if(SHOW_SECONDS)
+        if(this._showSeconds)
             aTime.push(time.getSeconds());
 
-        // Try to create binmap
-        for(let i = 0, l = TIME_BLOCK_ROWS_COUNT; i < l; i++) {
-            for(let j = TIME_BLOCK_COLUMNS_COUNT - 1; j >= 0; j--) {
-                if(aTime[i] & 1)
-                    timeTable[i][j].add_style_class_name(TIME_BIT_ACTIVE_CLASS);
-                else
-                    timeTable[i][j].remove_style_class_name(TIME_BIT_ACTIVE_CLASS);
+        // Try to create bitmap
+        for(let i = 0, l = this._timeBlockRowsCount; i < l; i++) {
+            for(let j = this._timeBlockColumnsCount - 1; j >= 0; j--) {
+                timeTable[i][j] = aTime[i] & 1;
                 aTime[i] >>= 1;
             }
         }
+
+        this._logger.log('Set to queue');
+        this._timeTable.queue_repaint();
+        this._timeTable.queue_redraw();
     },
+
+    // Paint function
+
+    _cairoDrawRoundedRectangle: function(context, x, y, w, h, r) {
+        //   A****BQ
+        //  H      C
+        //  *      *
+        //  G      D
+        //   F****E
+
+        if(r > Math.floor(w / 2))
+            r = Math.floor(w / 2);
+
+        context.moveTo(x + r, y);                                       // Move to A
+        context.lineTo(x + w - r, y);                                   // Straight line to B
+        context.curveTo(x + w, y, x + w, y, x + w, y + r);              // Curve to C, control points are both at Q
+        context.lineTo(x + w, y + h - r);                               // Straight line to D
+        context.curveTo(x + w, y + h, x + w, y + h, x + w - r, y + h);  // Curve to E
+        context.lineTo(x + r, y + h);                                   // Straight line to F
+        context.curveTo(x, y + h, x, y + h, x, y + h - r);              // Curve to G
+        context.lineTo(x, y + r);                                       // Straight line to H
+        context.curveTo(x, y, x, y, x + r, y);                          // Curve to A
+    },
+
+    _cairoLineFromTo: function(context, xf, yf, xt, yt) {
+        context.moveTo(xf, yf);
+        context.lineTo(xt, yt);
+    },
+
+    // Settings all over the place
 
     _updateClockesDate: function() {
         this._logger.log('Detect changes in clock-show-date.');
-        SHOW_DATE = this._gnomeSettings.get_boolean(CLOCK_SHOW_DATE_ALIAS);
-        if(SHOW_DATE)
+        this.showDate = this._gnomeSettings.get_boolean(CLOCK_SHOW_DATE_ALIAS);
+        if(this.showDate)
             this._dateLabel.show();
         else
             this._dateLabel.hide();
@@ -169,10 +266,9 @@ SquaresClockes.prototype = {
 
     _updateClockesSeconds: function() {
         this._logger.log('Detect changes in clock-show-seconds.');
-        SHOW_SECONDS = this._gnomeSettings.get_boolean(CLOCK_SHOW_SECONDS_ALIAS);
-        TIME_BLOCK_ROWS_COUNT = SHOW_SECONDS ? 3 : 2;
+        this.showSeconds = this._gnomeSettings.get_boolean(CLOCK_SHOW_SECONDS_ALIAS);
+        this._timeBlockRowsCount = this.showSeconds ? 3 : 2;
 
-        this._clearClockesTable();
-        this._buildClockesTable();
+        this._timeTable.queue_repaint();
     }
 }
